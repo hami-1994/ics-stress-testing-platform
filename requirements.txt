@@ -1,0 +1,26 @@
+# === Web 平台本體 ===
+fastapi>=0.110.0
+uvicorn[standard]>=0.29.0
+sqlalchemy>=2.0.0
+jinja2>=3.1.0
+python-multipart>=0.0.9
+websockets>=12.0
+psutil>=5.9.0
+
+# === PDF 報告（選用；系統依賴見 install.sh，裝不起來也不影響 HTML 報告）===
+weasyprint>=61.0
+
+# === 測項 plugin 依賴（見 app/plugins/README 內容／設計文件 5.5 節）===
+scapy>=2.5.0
+pymodbus>=3.6.0
+asyncua>=1.1.0
+pycomm3>=1.2.14
+paho-mqtt>=1.6.1
+# S7 真實協定層（COTP+Setup Communication）連線測項用，
+# 近期版本會內附對應平台的 snap7 共用函式庫，一般不需要另外裝系統套件；
+# 如在特殊 CPU 架構上裝不起來，S7 該測項會找不到套件而直接失敗、不影響其他測項。
+python-snap7>=1.3
+# gkbrk/slowloris 原生工具（純 Python 標準函式庫實作，無其他相依套件），
+# 對應 app/plugins/http/slowloris_tool.py。安裝完成後會提供 `slowloris`
+# 執行檔（entry point），該測項透過 subprocess 呼叫此執行檔。
+slowloris>=0.2.6

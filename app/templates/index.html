@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ICS Security Stress Testing Platform</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+
+<header>
+  <div class="header-titles">
+    <div class="eyebrow">ICS Security Stress Testing Platform</div>
+    <h1><span class="brand-mark">◆</span> SECURITY STRESS TESTING PLATFORM</h1>
+  </div>
+  <div class="header-right">
+    <div id="current-project-badge" class="badge">尚未選擇專案</div>
+  </div>
+</header>
+
+<div id="mode-switch">
+  <button data-mode="manage" class="mode-btn active">🗂️ 管理</button>
+  <button data-mode="execute" class="mode-btn">▶️ 執行專案</button>
+</div>
+<p id="mode-hint" class="field-hint" style="padding:0 24px">
+  <span data-mode-hint="manage">在這裡管理目標清單、專案、測項（命名/預設參數/健康狀態啟用停用）與封包擷取檔案。</span>
+  <span data-mode-hint="execute" style="display:none">這裡是實際執行壓力測試的工作流程：Port Scan → Port 選擇 → 監控器 → 測試佇列 → 執行。請先在「管理 → 專案管理」建立或選擇一個專案（畫面右上角會顯示目前作用中的專案）。</span>
+</p>
+
+<nav id="tabs">
+  <div class="tab-group" data-group="manage">
+    <button data-tab="target-mgmt" class="active"><span class="step-no">🎯</span>目標管理</button>
+    <button data-tab="project-mgmt"><span class="step-no">📁</span>專案管理</button>
+    <button data-tab="testitem-mgmt"><span class="step-no">🧪</span>測項管理</button>
+    <button data-tab="storage"><span class="step-no">💾</span>檔案管理</button>
+  </div>
+  <div class="tab-group" data-group="execute" style="display:none">
+    <button data-tab="scan"><span class="step-no">1</span>Port Scan</button>
+    <button data-tab="ports"><span class="step-no">2</span>Port 選擇</button>
+    <button data-tab="monitors"><span class="step-no">3</span>監控器</button>
+    <button data-tab="plan"><span class="step-no">4</span>測試佇列</button>
+    <button data-tab="run"><span class="step-no">5</span>執行</button>
+  </div>
+</nav>
+
+<main>
+
+<!-- ============ 管理 > 目標管理 ============ -->
+<section id="tab-target-mgmt" class="tab active">
+  <h2>建立目標（測試範圍確認）</h2>
+  <form id="form-target">
+    <label>目標 IP / 主機名 <input name="ip_or_host" required placeholder="例如 192.168.1.100"></label>
+    <label>描述（產品名稱/版本/測試目的） <input name="description" placeholder="例如 XX控制器 v2.1 韌體健壯性測試"></label>
+    <label>操作者姓名 <input name="operator_name" required placeholder="你的姓名"></label>
+    <label class="checkbox-line">
+      <input type="checkbox" name="scope_confirmed" required>
+      本人確認已取得對此目標進行壓力測試之授權
+    </label>
+    <button type="submit">建立目標</button>
+  </form>
+
+  <h2>目標清單管理</h2>
+  <input id="target-search" placeholder="搜尋 IP/主機名或描述..." style="max-width:400px">
+  <table id="targets-table">
+    <thead><tr><th>ID</th><th>IP/主機名</th><th>描述</th><th>確認人</th><th>確認時間</th><th>使用中專案數</th><th></th></tr></thead>
+    <tbody></tbody>
+  </table>
+</section>
+
+<!-- ============ 管理 > 專案管理 ============ -->
+<section id="tab-project-mgmt" class="tab">
+  <h2>建立專案</h2>
+  <form id="form-project">
+    <label>專案名稱 <input name="name" required placeholder="例如 XX控制器_2026Q3健壯性測試"></label>
+    <label>選擇目標
+      <select name="target_id" id="select-target" required></select>
+    </label>
+    <label>操作者姓名 <input name="operator_name" required></label>
+    <label>可接受最長連續服務中斷秒數
+      <input name="max_interruption_sec" type="number" value="5" min="0" max="1800">
+    </label>
+    <label>測項結束後的服務恢復等待秒數
+      <input name="recovery_wait_sec" type="number" value="30" min="0" max="1800">
+    </label>
+    <button type="submit">建立專案並開始（自動跳到「執行專案 → Port Scan」）</button>
+  </form>
+
+  <h2>所有專案</h2>
+  <p class="field-hint">點「開啟此專案」把它設為目前作用中的專案（畫面右上角徽章會更新），並直接跳到「執行專案 → 測試佇列」接續操作。</p>
+  <button id="btn-refresh-history">重新整理</button>
+  <table id="history-table">
+    <thead><tr><th>ID</th><th>名稱</th><th>目標</th><th>操作者</th><th>狀態</th><th>建立時間</th><th>報告</th><th>下載</th><th>測項/檔案</th><th></th><th></th></tr></thead>
+    <tbody></tbody>
+  </table>
+  <div id="history-files-panel"></div>
+</section>
+
+<!-- ============ 管理 > 測項管理 ============ -->
+<section id="tab-testitem-mgmt" class="tab">
+  <h2>測項管理</h2>
+  <div id="testitem-summary" class="run-status"></div>
+  <div class="button-row" style="margin:10px 0">
+    <button id="btn-testitem-recheck" class="primary">重新檢查全部測項</button>
+    <select id="testitem-filter-status">
+      <option value="all">全部狀態</option>
+      <option value="ok">✅ 健康檢查通過</option>
+      <option value="error">🔴 偵測到異常</option>
+      <option value="unknown">⚪ 尚未檢查</option>
+      <option value="disabled">已停用</option>
+    </select>
+    <input id="testitem-search" placeholder="搜尋測項名稱/分類..." style="max-width:300px">
+  </div>
+  <table id="testitem-table">
+    <thead><tr>
+      <th>啟用</th><th>健康狀態</th><th>測項名稱</th><th>分類</th><th>協定</th><th>類型</th><th>加速引擎</th><th>預設參數</th>
+    </tr></thead>
+    <tbody></tbody>
+  </table>
+</section>
+
+<!-- ============ 管理 > 檔案管理 ============ -->
+<section id="tab-storage" class="tab">
+  <h2>封包擷取檔案管理</h2>
+  <div id="storage-summary" class="run-status"></div>
+  <div class="button-row" style="margin:10px 0">
+    <button id="btn-storage-refresh">重新整理</button>
+    <button id="btn-storage-select-all">全選 / 取消全選</button>
+    <button id="btn-storage-delete-selected" class="danger">刪除勾選的檔案</button>
+  </div>
+  <table id="storage-table">
+    <thead><tr>
+      <th><input type="checkbox" id="storage-select-all-checkbox"></th>
+      <th>專案</th><th>目標</th><th>測項</th><th>模式</th><th>大小</th><th>狀態</th><th></th>
+    </tr></thead>
+    <tbody></tbody>
+  </table>
+</section>
+
+<!-- ============ 執行專案 > 1. Port Scan ============ -->
+<section id="tab-scan" class="tab">
+  <h2>Port Scan</h2>
+  <form id="form-scan">
+    <label>掃描類型
+      <select name="scan_type">
+        <option value="tcp_udp">TCP + UDP（預設，同時掃描，已用 -T5 加速）</option>
+        <option value="rustscan">rustscan 快速掃描（先用 rustscan 找開放 Port，再用 nmap 補服務資訊，通常最快）</option>
+        <option value="tcp_syn">僅 TCP SYN</option>
+        <option value="tcp_connect">僅 TCP Connect</option>
+        <option value="udp">僅 UDP（協定本身限制，較慢）</option>
+      </select>
+    </label>
+    <ul class="field-hint field-hint-list">
+      <li>nmap 系列已加上 -T5/--min-rate 加速（內部授權測試工具不需要隱匿性，速度優先）。</li>
+      <li>rustscan 需要先在 install.sh 裝好；沒裝的話請改選其他掃描類型。</li>
+      <li>UDP 掃描不管哪種方式都會比 TCP 慢，這是協定本身的限制。</li>
+    </ul>
+    <label>Port 範圍 <input name="port_range" value="1-65535"></label>
+    <button type="submit">開始掃描</button>
+  </form>
+  <div id="scan-status"></div>
+  <table id="scan-history-table">
+    <thead><tr><th>ID</th><th>類型</th><th>範圍</th><th>狀態</th><th>開始</th><th>結束</th></tr></thead>
+    <tbody></tbody>
+  </table>
+</section>
+
+<!-- ============ 執行專案 > 2. Port 選擇 ============ -->
+<section id="tab-ports" class="tab">
+  <h2>Port 選擇</h2>
+  <form id="form-add-port" class="inline-form">
+    <input name="port" type="number" placeholder="Port" required style="width:100px">
+    <select name="protocol"><option value="tcp">TCP</option><option value="udp">UDP</option></select>
+    <input name="service_name" placeholder="服務名稱(選填)">
+    <button type="submit">手動新增</button>
+  </form>
+  <table id="ports-table">
+    <thead><tr><th>選取</th><th>Port</th><th>Protocol</th><th>State</th><th>Service</th><th>Banner</th><th>來源</th><th>備註</th><th></th></tr></thead>
+    <tbody></tbody>
+  </table>
+</section>
+
+<!-- ============ 執行專案 > 3. 監控器 ============ -->
+<section id="tab-monitors" class="tab">
+  <h2>監控器選擇</h2>
+  <div id="monitor-types"></div>
+  <table id="monitors-table">
+    <thead><tr><th>類型</th><th>設定</th><th></th></tr></thead>
+    <tbody></tbody>
+  </table>
+</section>
+
+<!-- ============ 執行專案 > 4. 測試佇列 ============ -->
+<section id="tab-plan" class="tab">
+  <h2>建議測項</h2>
+  <button type="button" id="btn-add-all-suggestions" class="primary">全部加入佇列</button>
+  <div id="suggested-items"></div>
+
+  <h2>手動建立測試項目</h2>
+  <p class="field-hint">如果建議測項沒有你要的，或想自訂參數，可以用這裡手動加入。</p>
+  <form id="form-add-run">
+    <label>通訊協定分類
+      <select id="category-select"></select>
+    </label>
+    <label>測項
+      <select id="test-item-select"></select>
+    </label>
+    <label>目標 Port（Layer2 測項可留空）
+      <select id="port-select"></select>
+    </label>
+    <div id="param-fields"></div>
+    <label>測試時長（秒，上限 1800）<input id="duration-input" type="number" value="300" max="1800" min="1"></label>
+    <label>封包擷取
+      <select id="capture-mode-select">
+        <option value="none">不錄</option>
+        <option value="pcap">完整 pcap</option>
+        <option value="summary">流量摘要</option>
+        <option value="both">兩者都要</option>
+      </select>
+    </label>
+    <button type="submit">加入佇列</button>
+  </form>
+
+  <h3>目前測項</h3>
+  <table id="plan-table">
+    <thead><tr><th>#</th><th>測項</th><th>類型</th><th>分類</th><th>目標 Port</th><th>時長</th><th>擷取</th><th>狀態</th><th></th></tr></thead>
+    <tbody></tbody>
+  </table>
+</section>
+
+<!-- ============ 執行專案 > 5. 執行 ============ -->
+<section id="tab-run" class="tab">
+  <h2>執行控制</h2>
+  <div class="button-row">
+    <button id="btn-start-queue" class="primary">開始執行</button>
+    <button id="btn-stop-current" class="warn">停止目前測項</button>
+    <button id="btn-skip-current">跳過目前測項</button>
+    <button id="btn-resume-queue">恢復</button>
+    <button id="btn-kill-switch" class="danger">緊急停止（全部）</button>
+  </div>
+  <ul class="control-note control-note-list">
+    <li><strong>停止</strong>：暫停整個佇列，之後按「恢復」會重測同一項再往下走。</li>
+    <li><strong>跳過</strong>：直接放棄這一項（例如卡住或不想測了），不判定通過/失敗，佇列會自動接續下一項。</li>
+    <li><strong>資源保護自動暫停</strong>：若因「攻擊端資源保護」自動暫停（CPU/記憶體過載），不需要手動按恢復——背景會持續監看資源，恢復到健康水準後自動重測該項並接續佇列。</li>
+    <li><strong>標的服務未恢復自動暫停</strong>：測項結束後在設定時間內服務沒有恢復，會先判定該項「未通過」（這個判定不會再改變），不需要手動按恢復——背景會持續監看標的服務，等到「3. 監控器設定」裡有勾選、且對這次測項適用的監控器全部都恢復正常才會自動接續下一項（不會重測已經判定未通過的那一項；操作者仍可隨時手動按「恢復」提早接續，或按緊急停止）。</li>
+  </ul>
+
+  <h3>目前狀態</h3>
+  <div id="run-status" class="run-status">尚未開始</div>
+  <div id="run-progress-bar" class="progress-bar-outer" style="display:none">
+    <div id="run-progress-fill" class="progress-bar-fill"></div>
+  </div>
+  <div id="run-verdict-live"></div>
+
+  <h3>攻擊進行中</h3>
+  <div id="attack-anim-panel" class="attack-anim-panel idle">
+    <div class="attack-anim-stage">
+      <pre id="attack-anim-scene"></pre>
+      <span id="attack-anim-label-archer" class="attack-anim-label">攻擊端（Kali）</span>
+      <span id="attack-anim-label-target" class="attack-anim-label">受測目標</span>
+    </div>
+  </div>
+
+  <h3>即時監控</h3>
+  <div id="monitor-live"></div>
+
+  <h3>即時 Log</h3>
+  <pre id="log-live"></pre>
+
+  <h3>本次專案測試佇列</h3>
+  <table id="run-live-table">
+    <thead><tr><th>#</th><th>測項</th><th>類型</th><th>Port</th><th>狀態</th><th>嘗試次數</th><th>📶 過程狀態</th><th>🔁 恢復能力</th><th>🧮 判定</th></tr></thead>
+    <tbody></tbody>
+  </table>
+</section>
+
+</main>
+
+<footer>
+  <span>SECURITY STRESS TESTING PLATFORM</span>
+  <span class="footer-sep">·</span>
+  <span>僅供已授權之資安測試使用</span>
+</footer>
+
+<script src="/static/app.js"></script>
+</body>
+</html>

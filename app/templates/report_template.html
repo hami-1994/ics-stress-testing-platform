@@ -1,0 +1,481 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<title>壓力測試報告 - {{ project.name }}</title>
+<style>
+  /* 報告品牌色採用亮色系（藍 #0086DB／青綠 #33CBC7），跟平台 UI 配色呼應。
+     狀態色（通過/失敗/警告等）獨立於品牌色之外，避免報告的通過/未通過語意色被誤解。 */
+  :root { --brand: #0086DB; --brand-light: #33CBC7; --ink: #1c2430; --muted: #5a6472; }
+  * { box-sizing: border-box; }
+  body { font-family: "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", Arial, sans-serif; margin: 0; color: var(--ink); background: #fff; line-height: 1.55; }
+  /* 報告版面寬度 1200px，讓「測項結果總覽表」
+     有足夠空間可以完整顯示欄位標題文字，不用靠縮寫/省略文字硬塞進窄版面。 */
+  .report-shell { max-width: 1200px; margin: 0 auto; padding: 40px 44px 60px; }
+
+  /* ---- 封面／文件頭 ---- */
+  .report-header { border-bottom: 4px solid var(--brand); padding-bottom: 18px; margin-bottom: 20px; }
+  .report-header .eyebrow { color: var(--brand-light); font-size: 12px; font-weight: 700; letter-spacing: 1.5px; text-transform: uppercase; }
+  .report-header h1 { margin: 6px 0 4px; font-size: 28px; color: var(--brand); }
+  .report-header .subtitle { color: var(--muted); font-size: 14px; margin: 0 0 10px; }
+  .tool-credit { color: #8a92a0; font-size: 11.5px; margin: 2px 0 0; }
+  .doc-info-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px 24px; margin-top: 14px; font-size: 12.5px; }
+  .doc-info-grid div span.k { color: var(--muted); display: inline-block; min-width: 78px; }
+  .classification-badge { display: inline-block; background: var(--brand); color: #fff; font-size: 11px; font-weight: 700; letter-spacing: 1px; padding: 3px 10px; border-radius: 3px; margin-bottom: 10px; }
+
+  h2 { margin-top: 40px; border-left: 5px solid var(--brand); padding-left: 10px; color: var(--brand); font-size: 19px; page-break-after: avoid; }
+  h3 { margin-top: 22px; page-break-after: avoid; }
+  table { border-collapse: collapse; width: 100%; margin: 12px 0; }
+  th, td { border: 1px solid #ccc; padding: 6px 10px; text-align: left; font-size: 13px; vertical-align: top; }
+  th { background: #eef1f6; color: var(--brand); }
+  .status-completed { color: #1a7a1a; font-weight: bold; }
+  .status-failed { color: #b30000; font-weight: bold; }
+  .status-stopped { color: #b36b00; font-weight: bold; }
+  .meta { color: #555; font-size: 13px; }
+  .run-block { border: 1px solid #ddd; border-radius: 8px; padding: 16px 18px; margin: 16px 0; page-break-inside: avoid; }
+  .disclaimer { background: #fff8e1; border: 1px solid #e0c46c; padding: 10px 14px; border-radius: 6px; font-size: 13px; }
+  .exec-summary { background: #f4f7fc; border: 1px solid #d5deec; border-left: 4px solid var(--brand); padding: 14px 16px; border-radius: 6px; font-size: 14px; line-height: 1.7; margin: 14px 0; }
+  .methodology-box { background: #fafbfc; border: 1px solid #e2e6ec; border-radius: 6px; padding: 14px 16px; font-size: 13px; color: #333; }
+  .methodology-box ul { margin: 6px 0; padding-left: 20px; }
+  .toc { background: #fafbfc; border: 1px solid #e2e6ec; border-radius: 6px; padding: 10px 16px; font-size: 13px; }
+  .toc a { color: var(--brand-light); text-decoration: none; }
+  .report-footer { margin-top: 46px; padding-top: 14px; border-top: 1px solid #ddd; color: #9aa1ad; font-size: 11px; display: flex; justify-content: space-between; }
+  pre { background: #f7f7f7; padding: 8px; overflow-x: auto; font-size: 12px; }
+  @media print {
+    .report-shell { max-width: none; padding: 0 8mm; }
+    .toc { display: none; }
+  }
+
+  /* ---- 通過/失敗判定顏色 ---- */
+  .verdict-badge { display: inline-block; padding: 3px 10px; border-radius: 12px; font-weight: bold; font-size: 13px; white-space: nowrap; }
+  .verdict-pass { background: #e6f4ea; color: #1a7a1a; border: 1px solid #1a7a1a; }
+  .verdict-warn { background: #fff4e0; color: #a65d00; border: 1px solid #a65d00; }
+  .verdict-fail { background: #fdecea; color: #b30000; border: 1px solid #b30000; }
+  .verdict-unknown { background: #f0f0f0; color: #666; border: 1px solid #999; }
+  .verdict-skipped { background: #eef0f2; color: #555; border: 1px solid #888; }
+  .verdict-selfprotect { background: #ece5fb; color: #5b3aa8; border: 1px solid #5b3aa8; }
+  .verdict-unreachable { background: #e8f1fc; color: #1a5aa8; border: 1px solid #1a5aa8; }
+
+  /* ---- Summary 總覽區塊 ---- */
+  /* 判定拆成「過程穩定性」／「恢復能力」兩個獨立維度分開呈現，這個標題
+     樣式用來區隔「綜合判定」／「過程穩定性」／「恢復能力」三排統計卡片。 */
+  .axis-heading { font-size: 13.5px; color: var(--brand); margin: 14px 0 4px; }
+  .summary-box { border: 1px solid #ddd; border-radius: 8px; padding: 16px; margin: 12px 0; background: #fafafa; }
+  .summary-counts { display: flex; gap: 14px; flex-wrap: wrap; margin: 10px 0 16px 0; }
+  .summary-count-card { flex: 1; min-width: 110px; text-align: center; padding: 12px; border-radius: 8px; border: 1px solid #ddd; }
+  .summary-count-card .num { font-size: 26px; font-weight: bold; }
+  .summary-count-card .lbl { font-size: 12px; color: #555; }
+  .summary-list-item { padding: 8px 10px; border-radius: 6px; margin: 6px 0; font-size: 13px; }
+  .summary-list-item.fail { background: #fdecea; }
+  .summary-list-item.warn { background: #fff4e0; }
+  .summary-list-item.alert { background: #fdecea; }
+  .no-issue { color: #1a7a1a; font-weight: bold; padding: 10px; }
+
+  .level-ok { color: #1a7a1a; }
+  .level-warn { color: #a65d00; font-weight: bold; }
+  .level-critical { color: #b30000; font-weight: bold; }
+  .level-na { color: #777; font-style: italic; }
+
+  /* ---- 測項結果總覽表：判定欄使用純圖示＋下方圖例，避免文字徽章讓表格右側超出版面；
+     監控器欄位／儲存格 padding 縮小，讓整張表版面更和諧。欄位標題使用可正常閱讀的字級，
+     監控器欄位標題不重複標註「（判定用）」/「（診斷用）」（判定用監控器本身仍計入判定），
+     過程穩定性／恢復能力／判定三欄使用完整文字（不縮寫成單字），版面寬度足以容納。 ---- */
+  .matrix-table { font-size: 12.5px; table-layout: auto; }
+  .matrix-table th, .matrix-table td { padding: 5px 8px; }
+  .matrix-table th { text-align: center; vertical-align: bottom; font-size: 12px; line-height: 1.4; white-space: nowrap; }
+  .matrix-table th:first-child, .matrix-table td:first-child { text-align: left; min-width: 140px; max-width: 220px; font-size: 12.5px; }
+  /* 不設定 width:1%——這個提示會讓瀏覽器的自動欄寬演算法
+     把整欄硬壓到最窄，連帶把上面的欄位標題文字擠到一個字一行、直著排下來，看起來就像
+     「字都不見了」（其實是直排到很難辨認）。標題文字本來就不長，改讓瀏覽器
+     依標題文字的自然寬度（配合下面的 white-space: nowrap）決定欄寬即可，不需要額外強制。 */
+  .matrix-cell { text-align: center; font-size: 15px; white-space: nowrap; }
+  .matrix-cell.verdict-pass, .matrix-cell.verdict-warn, .matrix-cell.verdict-fail,
+  .matrix-cell.verdict-unknown, .matrix-cell.verdict-skipped, .matrix-cell.verdict-selfprotect,
+  .matrix-cell.verdict-unreachable { border: 1px solid #ddd; padding: 4px 4px; }
+  .matrix-critical { background: #fdecea; }
+  .matrix-warn { background: #fff4e0; }
+  .matrix-na { background: #f2f2f2; color: #999; }
+  .matrix-ok { background: #eaf7ec; }
+  .matrix-no_data { background: #fafafa; color: #bbb; }
+  .matrix-legend { font-size: 11px; color: #555; background: #f5f7fa; border: 1px solid #dde3ea;
+    border-radius: 6px; padding: 8px 14px; margin: 8px 0 14px 0; list-style: none; }
+  .matrix-legend li { margin: 2px 0; }
+  .matrix-legend strong { color: var(--ink); }
+  .role-note { font-size: 12px; color: #555; background: #f5f7fa; border: 1px solid #dde3ea; border-radius: 6px; padding: 8px 12px; margin: 8px 0 14px 0; }
+
+  /* PDF 頁面寬度固定（A4），螢幕上「單行不換行」在 PDF
+     裡塞不下就會直接超出頁面邊界——印刷時改成允許正常換行、字級與 padding 再縮小一點，
+     讓標題文字換成 2～3 行也能完整留在版面內，不會超出邊界，也不會一個字一行直排。
+     這條規則必須寫在上面 `.matrix-table th { white-space: nowrap; }`
+     之後（CSS cascade：同樣的 selector specificity，後面的規則才會蓋掉前面的），寫在
+     檔案開頭的 `@media print {}` 區塊裡雖然邏輯上正確、但因為 source order 在前面，
+     反而會被後面這條 nowrap 蓋掉、實際沒有作用，所以刻意放在這裡。 */
+  @media print {
+    .matrix-table th { white-space: normal; font-size: 10px; line-height: 1.3; }
+    .matrix-table th, .matrix-table td { padding: 4px 5px; }
+  }
+
+  /* ---- 狀態圓點（weasyprint 不支援 emoji 字形渲染，🟢🟡🔴⚪✅⚠️❌ 等表情符號在 PDF
+     輸出時會變成幾乎看不見的小黑點／完全消失，改用純 CSS 畫的實心圓點取代，
+     顏色語意不變、HTML 與 PDF 兩種輸出都能正確顯示，不依賴任何字型是否內建 emoji 字形） ---- */
+  .dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; vertical-align: middle; margin-right: 3px; }
+  .dot-pass, .dot-ok { background: #1a7a1a; }
+  .dot-warn { background: #d99a00; }
+  .dot-fail, .dot-critical { background: #b30000; }
+  .dot-unknown, .dot-na { background: #999; }
+  .dot-skipped { background: #888; }
+  .dot-selfprotect { background: #5b3aa8; }
+  .dot-unreachable { background: #1a5aa8; }
+
+  /* ---- 攻擊手法類型標籤 ---- */
+  .test-type-badge { display: inline-block; padding: 1px 8px; border-radius: 10px; font-size: 11px; font-weight: 600; white-space: nowrap; border: 1px solid #ccc; }
+  .test-type-traffic { color: #0d8f8b; border-color: #33CBC7; background: #e6faf9; }
+  .test-type-resource { color: #a65d00; border-color: #d6a768; background: #fff4e6; }
+</style>
+</head>
+<body>
+<div class="report-shell">
+
+<div class="report-header">
+  <span class="classification-badge">STRESS TEST REPORT</span>
+  <div class="eyebrow">SECURITY STRESS TESTING PLATFORM</div>
+  <h1>壓力測試報告</h1>
+  <p class="subtitle">{{ project.name }}　—　測試標的：{{ target.ip_or_host }}{% if target.description %}（{{ target.description }}）{% endif %}</p>
+  <p class="tool-credit">產出工具：SECURITY STRESS TESTING PLATFORM</p>
+  <div class="doc-info-grid">
+    <div><span class="k">報告編號</span>{{ report_id }}</div>
+    <div><span class="k">專案 ID</span>#{{ project.id }}</div>
+    <div><span class="k">報告產生時間</span>{{ generated_at }}</div>
+    <div><span class="k">操作者</span>{{ project.operator_name }}</div>
+    <div><span class="k">測試範圍確認人</span>{{ target.confirmed_by }}</div>
+    <div><span class="k">確認時間</span>{{ target.confirmed_at }}</div>
+  </div>
+</div>
+
+<p class="disclaimer">本報告涵蓋之測試僅限於已確認測試範圍內執行（見「測試範圍確認」欄位），測試結果與操作紀錄留存供稽核、驗證或提交予認證/管理單位使用。未經授權，請勿將本文件內容用於已確認測試範圍以外之目標。</p>
+
+<div class="toc">
+  <strong>本報告章節：</strong>
+  <a href="#sec-summary">總覽 Summary</a> ・
+  <a href="#sec-methodology">測試方法與範圍</a> ・
+  <a href="#sec-project">專案基本資訊</a> ・
+  <a href="#sec-results">測項執行結果</a>
+</div>
+
+<h2 id="sec-summary">總覽 Summary</h2>
+
+<div class="exec-summary">
+  <strong>執行摘要（Executive Summary）：</strong>{{ summary.exec_summary }}
+</div>
+
+<div class="summary-box">
+  <h4 class="axis-heading">綜合判定</h4>
+  <div class="summary-counts">
+    {% for c in summary.verdict_cards %}
+    {% if c.count > 0 or c.key in ("pass", "fail") %}
+    <div class="summary-count-card verdict-{{ c.key }}"><div class="num">{{ c.count }}</div><div class="lbl"><span class="dot {{ c.css|replace('verdict-','dot-') }}"></span>{{ c.label }}</div></div>
+    {% endif %}
+    {% endfor %}
+  </div>
+
+  <div class="role-note">
+    <strong>判定拆成兩個獨立維度：</strong>綜合判定只要任一維度未通過就是「未通過」——
+    「測試過程連線和服務狀態」看的是測試「執行期間」有沒有任何判定用監控器連續中斷秒數
+    超過可接受上限；「受攻擊後的恢復能力」看的是測項「結束後」服務有沒有在可接受時間內
+    恢復正常。兩者互相獨立：過程穩定但事後沒恢復、或過程中斷但事後有恢復，都會被明確分開
+    標示，方便判斷問題出在哪個環節。
+  </div>
+
+  <h4 class="axis-heading">測試過程連線和服務狀態</h4>
+  <div class="summary-counts">
+    {% for c in summary.stability_cards %}
+    <div class="summary-count-card {{ c.css }}"><div class="num">{{ c.count }}</div><div class="lbl"><span class="dot {{ c.css|replace('verdict-','dot-') }}"></span>{{ c.label }}</div></div>
+    {% endfor %}
+  </div>
+
+  <h4 class="axis-heading">受攻擊後的恢復能力</h4>
+  <div class="summary-counts">
+    {% for c in summary.recovery_cards %}
+    <div class="summary-count-card {{ c.css }}"><div class="num">{{ c.count }}</div><div class="lbl"><span class="dot {{ c.css|replace('verdict-','dot-') }}"></span>{{ c.label }}</div></div>
+    {% endfor %}
+  </div>
+
+  {% if not summary.has_any_issue %}
+  <p class="no-issue">本次測試所有已判定項目皆通過，未發現服務中斷或監控異常。</p>
+  {% endif %}
+
+  {% if summary.unreachable_items %}
+  <h3>無法測試的測項（目標 Port 從一開始就無回應，非壓力測試造成）</h3>
+  <div class="role-note">
+    以下測項在開始執行前，已對目標 Port 做過一次快速連線探測（逾時 2 秒），結果從一開始就
+    無法連線——研判是該 Port 本身未開放/未提供對應服務，<strong>跟「壓力測試把服務打掛」是
+    完全不同的兩件事</strong>，因此不計入「未通過」，也不會暫停測試佇列，會自動跳過並接續
+    下一項。常見原因：測試計畫勾選的 Port 與標的實際開放的 Port 不一致、韌體版本未啟用該
+    服務、或防火牆規則阻擋。
+  </div>
+  {% for it in summary.unreachable_items %}
+  <div class="summary-list-item" style="background:#e8f1fc">
+    <strong>#{{ it.display_no }} {{ it.name }}</strong>（{{ it.category }}，Port {{ it.port or "-" }}）—
+    {{ it.skip_reason }}
+  </div>
+  {% endfor %}
+  {% endif %}
+
+  {% if summary.failed_items %}
+  <h3>綜合判定未通過的測項</h3>
+  {% for it in summary.failed_items %}
+  <div class="summary-list-item fail">
+    <strong>#{{ it.display_no }} {{ it.name }}</strong>（{{ it.category }}，Port {{ it.port or "-" }}）—
+    <span class="verdict-badge {{ it.stability_css }}"><span class="dot {{ it.stability_css|replace('verdict-','dot-') }}"></span>{{ it.stability_label }}</span>
+    <span class="verdict-badge {{ it.recovery_css }}"><span class="dot {{ it.recovery_css|replace('verdict-','dot-') }}"></span>{{ it.recovery_label }}</span>
+    <br>最長連續中斷 {{ it.interruption_sec }} 秒
+    {% if it.recovered == false %}｜結束後 {{ it.recovery_wait_used_sec }} 秒內未恢復{% endif %}
+    {% if it.recovered == true %}｜結束後 {{ it.recovery_wait_used_sec }} 秒內已恢復{% endif %}
+  </div>
+  {% endfor %}
+  {% endif %}
+
+  {% if summary.stability_fail_items %}
+  <h3>過程穩定性未通過的測項（測試「執行期間」連續中斷超過可接受秒數）</h3>
+  <div class="role-note">
+    以下測項在執行期間，判定用監控器偵測到的最長連續中斷秒數超過專案設定的可接受上限，
+    <strong>不論測試結束後有沒有恢復，這個維度都算未通過</strong>——因為測試過程本身確實
+    造成了超過門檻的服務/連線中斷。
+  </div>
+  {% for it in summary.stability_fail_items %}
+  <div class="summary-list-item fail">
+    <strong>#{{ it.display_no }} {{ it.name }}</strong>（{{ it.category }}，Port {{ it.port or "-" }}）—
+    最長連續中斷 {{ it.interruption_sec }} 秒（可接受上限 {{ project.max_interruption_sec }} 秒）
+    {% if it.aborted_by_interruption %}，已被自動提前中止{% endif %}
+    ｜恢復能力維度：<span class="verdict-badge {{ it.recovery_css }}"><span class="dot {{ it.recovery_css|replace('verdict-','dot-') }}"></span>{{ it.recovery_label }}</span>
+  </div>
+  {% endfor %}
+  {% endif %}
+
+  {% if summary.recovery_fail_items %}
+  <h3>恢復能力未如預期的測項（測項「結束後」未在可接受時間內恢復）</h3>
+  <div class="role-note">
+    以下測項在測試結束後，判定用監控器在 {{ project.recovery_wait_sec }} 秒的觀察時間內
+    仍未全部回報正常，<strong>不論測試過程本身穩不穩定，這個維度都算未如預期</strong>。
+  </div>
+  {% for it in summary.recovery_fail_items %}
+  <div class="summary-list-item fail">
+    <strong>#{{ it.display_no }} {{ it.name }}</strong>（{{ it.category }}，Port {{ it.port or "-" }}）—
+    等待 {{ it.recovery_wait_used_sec }} 秒仍未恢復（可接受上限 {{ project.recovery_wait_sec }} 秒）
+    ｜過程穩定性維度：<span class="verdict-badge {{ it.stability_css }}"><span class="dot {{ it.stability_css|replace('verdict-','dot-') }}"></span>{{ it.stability_label }}</span>
+  </div>
+  {% endfor %}
+  {% endif %}
+
+  {% if summary.warn_items %}
+  <h3>通過但有警示的測項</h3>
+  {% for it in summary.warn_items %}
+  <div class="summary-list-item warn">
+    <strong>#{{ it.display_no }} {{ it.name }}</strong>（{{ it.category }}，Port {{ it.port or "-" }}）—
+    <span class="verdict-badge {{ it.stability_css }}"><span class="dot {{ it.stability_css|replace('verdict-','dot-') }}"></span>{{ it.stability_label }}</span>
+    <span class="verdict-badge {{ it.recovery_css }}"><span class="dot {{ it.recovery_css|replace('verdict-','dot-') }}"></span>{{ it.recovery_label }}</span>
+    （偵測到 {{ it.interruption_sec }} 秒中斷，在可接受範圍內）
+  </div>
+  {% endfor %}
+  {% endif %}
+
+  {% if summary.skipped_items %}
+  <h3>使用者手動跳過的測項</h3>
+  {% for it in summary.skipped_items %}
+  <div class="summary-list-item">
+    <strong>#{{ it.display_no }} {{ it.name }}</strong>（{{ it.category }}，Port {{ it.port or "-" }}）—
+    {{ it.skip_reason }}，以下顯示的是跳過前已蒐集到的部分結果
+  </div>
+  {% endfor %}
+  {% endif %}
+
+  {% if summary.monitor_alerts %}
+  <h3>出現異常/警示的監控器</h3>
+  {% for a in summary.monitor_alerts %}
+  <div class="summary-list-item alert">
+    測項 <strong>#{{ a.display_no }} {{ a.name }}</strong> 的「{{ a.monitor_name }}」監控器：
+    <span class="dot dot-critical"></span>異常 {{ a.critical_count }} 次｜<span class="dot dot-warn"></span>警示 {{ a.warn_count }} 次
+  </div>
+  {% endfor %}
+  {% endif %}
+
+  {% if summary.matrix_columns %}
+  <h3>測項結果總覽表</h3>
+  <table class="matrix-table">
+    <tr>
+      <th>測項</th>
+      <th>穩定性</th>
+      <th>恢復能力</th>
+      <th>判定</th>
+      {% for col in summary.matrix_columns %}
+      <th>{{ col.name }}</th>
+      {% endfor %}
+    </tr>
+    {% for row in summary.matrix_rows %}
+    <tr>
+      <td>#{{ row.display_no }} {{ row.name }}{% if row.port %}（Port {{ row.port }}）{% endif %}
+        <br><span class="test-type-badge test-type-{{ row.test_type }}">{{ row.test_type_label }}</span></td>
+      <td class="matrix-cell {{ row.stability_css }}" title="{{ row.stability_label }}"><span class="dot {{ row.stability_css|replace('verdict-','dot-') }}"></span></td>
+      <td class="matrix-cell {{ row.recovery_css }}" title="{{ row.recovery_label }}"><span class="dot {{ row.recovery_css|replace('verdict-','dot-') }}"></span></td>
+      <td class="matrix-cell {{ row.verdict_css }}" title="{{ row.verdict_label }}"><span class="dot {{ row.verdict_css|replace('verdict-','dot-') }}"></span></td>
+      {% for cell in row.cells %}
+      <td class="matrix-cell matrix-{{ cell.status }}" title="{{ cell.detail }}">{% if cell.status == "no_data" %}—{% else %}<span class="dot dot-{{ cell.status }}"></span>{% endif %}</td>
+      {% endfor %}
+    </tr>
+    {% endfor %}
+  </table>
+  <ul class="matrix-legend">
+    <li><strong>「穩定性」／「恢復能力」欄：</strong>
+      <span class="dot dot-pass"></span>正常／已恢復｜
+      <span class="dot dot-warn"></span>輕微異常（可接受範圍內）｜
+      <span class="dot dot-fail"></span>異常／未通過｜
+      <span class="dot dot-unknown"></span>無法判斷｜
+      <span class="dot dot-skipped"></span>不適用</li>
+    <li><strong>「判定」欄：</strong>
+      <span class="dot dot-pass"></span>通過｜
+      <span class="dot dot-warn"></span>通過（有警示）｜
+      <span class="dot dot-fail"></span>未通過｜
+      <span class="dot dot-unknown"></span>無法判斷｜
+      <span class="dot dot-skipped"></span>已跳過｜
+      <span class="dot dot-selfprotect"></span>已中止（資源保護）｜
+      <span class="dot dot-unreachable"></span>無法測試</li>
+    <li><strong>各監控器欄位：</strong>
+      <span class="dot dot-ok"></span>正常｜
+      <span class="dot dot-warn"></span>警示｜
+      <span class="dot dot-critical"></span>異常｜
+      <span class="dot dot-na"></span>不適用｜— 未取得資料（滑鼠移到圖示上可看詳細說明）</li>
+  </ul>
+  {% endif %}
+
+  <p class="meta">
+    過程穩定性判定：可接受最長連續中斷 {{ project.max_interruption_sec }} 秒（執行期間
+    任何判定用監控器連續中斷超過此秒數即未通過，不論事後有沒有恢復）。
+    恢復能力判定：測項結束後恢復等待時間 {{ project.recovery_wait_sec }} 秒（此設定可於
+    建立專案時調整）。沒有啟用任何判定用監控器（服務可用性／UDP 服務／ARP／Ping／網路介面／
+    TCP 連線狀態，六種擇一即可）的測項，兩個維度都無法判定，會顯示「無法判斷」。
+  </p>
+</div>
+
+<h2 id="sec-methodology">測試方法與範圍</h2>
+<div class="methodology-box">
+  <p><strong>測試目的：</strong>評估測試標的在通訊協定/服務層級面對高流量、異常封包、連線資源耗盡等
+  情境下的可用性與穩健性（Availability &amp; Robustness），作為產品資安/健壯性強化的依據，
+  並非滲透測試（Penetration Test）或漏洞挖掘，不涉及任何資料竊取、權限提升或惡意程式行為。</p>
+  <p><strong>測試方法：</strong>依測試標的開放之通訊埠與通訊協定，選用對應之壓力測試測項（協定流量洪水、
+  連線池飽和、畸形封包邊界測試等），以可控速率持續施加壓力，同時透過多種監控器（服務可用性、
+  ARP 鏈路存活、網路介面狀態、攻擊端自我資源等）即時觀察標的反應，測項結束後另有一段「服務恢復
+  觀察期」確認影響是否可回復。</p>
+  <ul>
+    <li>測試範圍：僅限本報告「測試標的」欄位所列之單一目標，且已完成測試範圍確認程序（見封面頁）。</li>
+    <li>執行環境：單一操作者、單一測試佇列依序執行，不同時對多個目標或以多重佇列平行施測。</li>
+    <li>安全防護：施測工具本身內建速率上限、時長上限（單一測項最長 30 分鐘）、以及攻擊端主機
+      自我資源保護機制（CPU/記憶體過載時自動中止測項），避免測試過程對施測端或非預期對象造成影響。</li>
+    <li>判定基準：通過/失敗門檻（可接受最長連續中斷秒數、結束後恢復等待秒數）由操作者於建立專案時
+      設定，詳見下方「專案基本資訊」與各測項判定結果。</li>
+  </ul>
+</div>
+
+<h2 id="sec-project">專案基本資訊</h2>
+<table>
+  <tr><th>專案名稱</th><td>{{ project.name }}</td></tr>
+  <tr><th>操作者</th><td>{{ project.operator_name }}</td></tr>
+  <tr><th>專案狀態</th><td>{{ project.status }}</td></tr>
+  <tr><th>建立時間</th><td>{{ project.created_at }}</td></tr>
+  <tr><th>結束時間</th><td>{{ project.closed_at }}</td></tr>
+  <tr><th>目標</th><td>{{ target.ip_or_host }}（{{ target.description }}）</td></tr>
+  <tr><th>測試範圍確認</th><td>{{ target.confirmed_by }} 於 {{ target.confirmed_at }} 確認</td></tr>
+  <tr><th>報告產生時間</th><td>{{ generated_at }}</td></tr>
+  <tr><th>通過條件</th><td>可接受最長連續中斷 {{ project.max_interruption_sec }} 秒｜結束後恢復等待 {{ project.recovery_wait_sec }} 秒</td></tr>
+</table>
+
+<h2 id="sec-results">測項執行結果（共 {{ runs|length }} 項）</h2>
+
+{% for run in runs %}
+<div class="run-block">
+  <h3>#{{ run.display_no }} {{ run.name }}（{{ run.category }}） - Port {{ run.port or "-" }}/{{ run.protocol }}
+    <span class="status-{{ run.status }}">[{{ run.status }}]</span>
+    <span class="test-type-badge test-type-{{ run.test_type }}">{{ run.test_type_label }}</span>
+  </h3>
+  <p class="meta">
+    <span class="verdict-badge {{ run.stability_css }}">過程：<span class="dot {{ run.stability_css|replace('verdict-','dot-') }}"></span>{{ run.stability_label }}</span>
+    <span class="verdict-badge {{ run.recovery_css }}">恢復：<span class="dot {{ run.recovery_css|replace('verdict-','dot-') }}"></span>{{ run.recovery_label }}</span>
+    <span class="verdict-badge {{ run.verdict_css }}">綜合：<span class="dot {{ run.verdict_css|replace('verdict-','dot-') }}"></span>{{ run.verdict_label }}</span>
+  </p>
+  <p class="meta">
+    嘗試次數：{{ run.attempt_no }}｜時長設定：{{ run.duration_sec }} 秒｜封包擷取：{{ run.capture_mode }}<br>
+    開始：{{ run.started_at }}｜結束：{{ run.ended_at }}<br>
+    測試過程最長連續中斷：{{ run.interruption_sec }} 秒
+    {% if run.aborted_by_interruption %}（已超過可接受上限，測項被自動提前中止）{% endif %}｜
+    結束後是否恢復：
+    {% if run.recovered == true %}是（{{ run.recovery_wait_used_sec }} 秒內恢復）
+    {% elif run.recovered == false %}否（等待 {{ run.recovery_wait_used_sec }} 秒仍未恢復）
+    {% else %}未檢查（未啟用判定用監控器、跳過檢查、或不適用）{% endif %}
+    {% if run.skip_reason %}<br><strong>備註：</strong>{{ run.skip_reason }}{% endif %}
+  </p>
+
+  <table>
+    <tr><th style="width:160px">測試參數</th><td>
+      {% if run.params_readable %}
+        {% for p in run.params_readable %}{{ p.label }}：{{ p.value }}<br>{% endfor %}
+      {% else %}（此測項無可調整參數）{% endif %}
+    </td></tr>
+    <tr><th>執行結果摘要</th><td>
+      {% if run.result_readable %}
+        {% for rres in run.result_readable %}{{ rres.label }}：{{ rres.value }}<br>{% endfor %}
+      {% else %}（無摘要資料）{% endif %}
+    </td></tr>
+  </table>
+
+  {% if run.monitors_summary %}
+  <h4>監控摘要</h4>
+  <table>
+    <tr><th>監控器</th><th>取樣筆數</th><th>異常/警示次數</th><th>指標統計（min/max/avg）</th></tr>
+    {% for mon_name, mon in run.monitors_summary.items() %}
+    <tr>
+      <td>{{ mon.display_name }}<br><small style="color:#888">（{{ mon.role }}）</small></td>
+      <td>{{ mon.row_count }}</td>
+      <td>
+        {% if mon.not_applicable %}
+          <span class="level-na"><span class="dot dot-na"></span>不適用（此測項為 Layer 2 通訊協定或未指定 Port，此監控器對本測項不適用，非異常）</span>
+        {% else %}
+          {% if mon.critical_count %}<span class="level-critical"><span class="dot dot-critical"></span>異常 {{ mon.critical_count }} 次</span><br>{% endif %}
+          {% if mon.warn_count %}<span class="level-warn"><span class="dot dot-warn"></span>警示 {{ mon.warn_count }} 次</span><br>{% endif %}
+          {% if not mon.critical_count and not mon.warn_count %}<span class="level-ok"><span class="dot dot-ok"></span>全程正常</span>{% endif %}
+        {% endif %}
+        {% if mon.critical_reasons %}
+          <br><small>{% for reason in mon.critical_reasons %}・{{ reason }}<br>{% endfor %}</small>
+        {% endif %}
+      </td>
+      <td>
+        {% for k, v in mon.metrics.items() %}
+          {{ v.label }}：min={{ v.min }} max={{ v.max }} avg={{ v.avg }}<br>
+        {% endfor %}
+      </td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% endif %}
+
+  {% if run.captures %}
+  <h4>封包擷取檔案</h4>
+  <table>
+    <tr><th>模式</th><th>檔案</th><th>大小(bytes)</th></tr>
+    {% for c in run.captures %}
+    <tr><td>{{ c.mode }}</td><td>{{ c.file }}</td><td>{{ c.size_bytes }}</td></tr>
+    {% endfor %}
+  </table>
+  {% endif %}
+
+  <p class="meta">執行 log：{{ run.log_path }}</p>
+</div>
+{% endfor %}
+
+<div class="report-footer">
+  <span>{{ report_id }}</span>
+  <span>SECURITY STRESS TESTING PLATFORM</span>
+  <span>STRESS TEST REPORT</span>
+</div>
+
+</div><!-- /.report-shell -->
+</body>
+</html>

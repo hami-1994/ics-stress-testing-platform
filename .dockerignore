@@ -1,0 +1,24 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+
+# Data（由 volume 掛載，不需要 build 進映像檔）
+data/
+
+# IDE / OS
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# Git
+.git/
+.gitignore
+
+# 文件（不需要 build 進映像檔，減少映像大小）
+*.docx
+*.pdf
