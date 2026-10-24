@@ -10,7 +10,7 @@ RUN apt-get update -y && apt-get install -y --no-install-recommends \
     nmap hping3 tshark \
     wrk slowhttptest \
     netsniff-ng \
-    libpango-1.0-0 libpangocairo-1.0-0 libgdk-pixbuf2.0-0 libffi-dev \
+    libpango-1.0-0 libpangocairo-1.0-0 libgdk-pixbuf-2.0-0 libffi-dev \
     shared-mime-info fonts-noto-cjk \
     iproute2 iputils-ping net-tools procps curl \
     gcc build-essential \
